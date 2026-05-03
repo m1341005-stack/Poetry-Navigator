@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Poetry Navigator - Vivian Chang</title>
+    <style>
+        body {
+            margin: 0; padding: 0;
+            background-color: #0f0f0f;
+            color: #555; /* 預設暗色文字，增加 Light 模式的對比 */
+            font-family: 'Playfair Display', Georgia, serif;
+            overflow: hidden;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            height: 100vh;
+        }
+        #text-container {
+            font-size: 2.8rem;
+            line-height: 1.6;
+            text-align: center;
+            max-width: 85%;
+            position: relative;
+            z-index: 5;
+            pointer-events: none; /* 讓滑鼠事件穿透到背景畫布 */
+            user-select: none;
+        }
+        #controls {
+            position: absolute;
+            bottom: 50px;
+            display: flex; gap: 20px;
+            z-index: 100;
+        }
+        button {
+            padding: 12px 28px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            cursor: pointer;
+            background: #222;
+            color: #eee;
+            border: 1px solid #444;
+            border-radius: 50px;
+            transition: 0.3s all;
+        }
+        button:hover { background: #444; transform: translateY(-3px); }
+        button.active {
+            background: #007bff;
+            border-color: #00d2ff;
+            box-shadow: 0 0 20px rgba(0, 123, 255, 0.6);
+        }
+        canvas {
+            position: absolute; top: 0; left: 0;
+            z-index: 1;
+        }
+        footer {
+            position: absolute; bottom: 15px;
+            font-size: 0.85rem; color: #444;
+            letter-spacing: 1px;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="text-container">
+        <p>I ask them to take a poem<br>
+        and hold it up to the light<br>
+        like a color slide...<br>
+        or press an ear against its hive...<br>
+        I want them to waterski<br>
+        across the surface of a poem.</p>
+    </div>
+
+    <div id="controls">
+        <button id="btn-light">💡 LIGHT</button>
+        <button id="btn-hive">🐝 HIVE</button>
+        <button id="btn-ski">🏄 WATER-SKI</button>
+    </div>
+
+    <footer>POETRY NAVIGATOR | DESIGNER: VIVIAN CHANG</footer>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const container = document.getElementById('text-container');
+        let mode = 'none';
+        let mouse = { x: -1000, y: -1000 };
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        window.addEventListener('mousemove', e => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+            if (mode === 'ski') createSplashes(e.clientX, e.clientY);
+        });
+
+        function setMode(newMode) {
+            mode = newMode;
+            document.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+            document.getElementById('btn-' + newMode).classList.add('active');
+            
+            // 重置文字顏色
+            if (mode === 'light') {
+                container.style.color = "rgba(255,255,255,0.1)";
+            } else {
+                container.style.color = "#eee";
+            }
+        }
+
+        document.getElementById('btn-light').onclick = () => setMode('light');
+        document.getElementById('btn-hive').onclick = () => setMode('hive');
+        document.getElementById('btn-ski').onclick = () => setMode('ski');
+
+        const particles = [];
+        const ripples = [];
+
+        class Particle {
+            constructor(x, y, color, type) {
+                this.x = x; this.y = y; this.color = color; this.type = type;
+                this.size = Math.random() * (type === 'bee' ? 3 : 5) + 1;
+                this.vx = (Math.random() - 0.5) * (type === 'bee' ? 8 : 4);
+                this.vy = (Math.random() - 0.5) * (type === 'bee' ? 8 : 4);
+                this.life = 1.0;
+            }
+            update() {
+                if (this.type === 'bee') {
+                    // 蜂巢模式：粒子會向滑鼠聚集
+                    let dx = mouse.x - this.x;
+                    let dy = mouse.y - this.y;
+                    this.vx += dx * 0.01;
+                    this.vy += dy * 0.01;
+                    this.vx *= 0.92;
+                    this.vy *= 0.92;
+                }
+                this.x += this.vx;
+                this.y += this.vy;
+                this.life -= 0.015;
+            }
+            draw() {
+                ctx.fillStyle = this.color;
+                ctx.globalAlpha = this.life;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        class Ripple {
+            constructor(x, y) {
+                this.x = x; this.y = y; this.r = 2; this.life = 1.0;
+            }
+            update() { this.r += 4; this.life -= 0.02; }
+            draw() {
+                ctx.strokeStyle = `rgba(0, 180, 255, ${this.life})`;
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+        }
+
+        function createSplashes(x, y) {
+            for(let i=0; i<3; i++) particles.push(new Particle(x, y, '#fff', 'splash'));
+            if (Math.random() > 0.8) ripples.push(new Ripple(x, y));
+        }
+
+        function animate() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (mode === 'light') {
+                // 探照燈效果
+                let gradient = ctx.createRadialGradient(mouse.x, mouse.y, 10, mouse.x, mouse.y, 250);
+                gradient.addColorStop(0, 'rgba(255, 255, 255, 0.9)');
+                gradient.addColorStop(0.5, 'rgba(255, 255, 0, 0.2)');
+                gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+                ctx.fillStyle = gradient;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                // 讓滑鼠附近的文字變色 (這部分用 JS 輔助)
+                container.style.backgroundImage = `radial-gradient(circle at ${mouse.x}px ${mouse.y}px, #fff 0%, #fff 100px, rgba(255,255,255,0.1) 200px)`;
+                container.style.webkitBackgroundClip = "text";
+                container.style.webkitTextFillColor = "transparent";
+            } else {
+                container.style.backgroundImage = "none";
+                container.style.webkitTextFillColor = "#eee";
+            }
+
+            if (mode === 'hive') {
+                if (Math.random() > 0.5) particles.push(new Particle(mouse.x, mouse.y, '#ffd700', 'bee'));
+            }
+
+            particles.forEach((p, i) => {
+                p.update(); p.draw();
+                if (p.life <= 0) particles.splice(i, 1);
+            });
+
+            ripples.forEach((r, i) => {
+                r.update(); r.draw();
+                if (r.life <= 0) ripples.splice(i, 1);
+            });
+
+            requestAnimationFrame(animate);
+        }
+        animate();
+        setMode('light'); // 預設開啟第一個模式
+    </script>
+</body>
+</html>
